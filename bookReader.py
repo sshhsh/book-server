@@ -1,7 +1,9 @@
 import json
-import math
+import linecache
 from wsgiref.simple_server import make_server
-from webob import Request, Response, dec
+
+from elasticsearch import Elasticsearch
+from webob import Response, dec
 
 
 def count_line(file_name):
@@ -27,36 +29,52 @@ def app(request) -> Response:
 
     res = Response()
 
-    if request.path == '/':
-        res.status_code = 200
-        bid = request.params['id']
-        res.headers.add('Access-Control-Allow-Origin', '*')
-        res.content_type = 'application/json'
-        res.charset = 'utf-8'
-        n = count_line(bid)
-        doc = {
-            "len": int(math.ceil(n/100))
-        }
-        res.body = json.dumps(doc).encode()
-    elif request.path == '/read':
-        bid = request.params['id']
-        chapter_id = request.params['chapter']
-        res.headers.add('Access-Control-Allow-Origin', '*')
-        res.content_type = 'application/json'
-        res.charset = 'utf-8'
-        doc = {
-            "t": "the first",
-            "p": ["aaa", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc", "bbb", "ccc"]
-        }
-        res.body = json.dumps(doc).encode()
-    else:
+    try:
+        if request.path == '/':
+            res.status_code = 200
+            bid = request.params['id']
+            res.headers.add('Access-Control-Allow-Origin', '*')
+            res.content_type = 'application/json'
+            res.charset = 'utf-8'
+            n = count_line(bid)
+            doc = {
+                "len": n / 100
+            }
+            res.body = json.dumps(doc).encode()
+        elif request.path == '/read':
+            bid = request.params['id']
+            chapter_id = int(request.params['chapter'])
+            res.headers.add('Access-Control-Allow-Origin', '*')
+            res.content_type = 'application/json'
+            res.charset = 'utf-8'
+            chapters = []
+            for i in range(chapter_id * 100 + 1, chapter_id * 100 + 101):
+                c = linecache.getline(bid, i)
+                if not c:
+                    break
+                elif c[-1] == '\n':
+                    c = c[:-1]
+                chapters.append(c)
+            title = es.get(index='ebooks', doc_type='book', id=bid)['_source']['title']
+
+            doc = {
+                "t": title,
+                "p": chapters
+            }
+            res.body = json.dumps(doc).encode()
+        else:
+            res.status_code = 404
+            res.body = '<h1>Not found</h1>'.encode()
+    except Exception as e:
+        print(e)
         res.status_code = 404
         res.body = '<h1>Not found</h1>'.encode()
     return res
 
 
 if __name__ == '__main__':
-    ip = '127.0.0.1'
+    es = Elasticsearch(hosts="172.17.0.1:19200")
+    ip = '0.0.0.0'
     port = 9999
     server = make_server(ip, port, app)
     try:
